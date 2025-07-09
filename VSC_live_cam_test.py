@@ -31,13 +31,13 @@ allowed_obj_vehicle = [1,2,3,5,7] # 1 : Bicycle, 2 : Car, 3 : Bike/Motercycle, 5
 # Feed Description 
 # feed_ip_url = "rtsp://<username>:<password>@<ip_address>/enr/live/<cam_id>/<stream_id>" #Live stream from an IP camera using RTSP protocol.
 feed_ip_url=r"C:\Users\Rishabh Surana\Desktop\Projects\ATMS project\test_data\test_video\cars.mp4"
-src_pts = np.array([[245, 0], [330, 0], [740, 360], [0, 360]], np.float32)
+src_pts = np.array([[245, 0], [330, 0], [740, 360], [0, 360]], np.float32)      # ROI coordinates
 roi_polygon =src_pts.reshape((-1, 1, 2))
 dst_width = 640                                                     # Frame width
 dst_height = 360                                                    # Frame Height
 speed_limit = 30                                                    # in KM/Hr
 expected_movement = [0,-1]                                          # From Top to Bottom
-meters_per_pixel = 50/360                               
+meters_per_pixel = 50/360                                           # Streach -- px-length : Approx 764.0320673898px, physical-length : 125m 
 
 
 
@@ -50,11 +50,12 @@ if not cap.isOpened():
     exit()
 else:
     print("Video is opened and working")
-
 fps = cap.get(cv2.CAP_PROP_FPS)
 if fps == 0 or fps is None or np.isnan(fps):
-    fps = 15
+    fps = 20
 print("FPS : ",fps)
+
+
 
 # Variables
 car_coordinates = {}
@@ -74,7 +75,6 @@ fieldnames = ["Transaction_ID", "Timestamp", "Track_ID", "Class", "Speed_kmph",
               "Is_Stalled", "Is_Opposite", "Is_Heavy", "Is_Overspeeding"]
 
 
-
 # REPORT
 csv_filename = f"{datetime.now().date()}_vehicle_report.csv"
 folder_path = r"C:\Users\Rishabh Surana\Desktop\Projects\ATMS project\Vehicle Event Reports"
@@ -88,13 +88,12 @@ def final_report(speed, track_id, class_name):
     is_heavy = track_id in Heavy_vehicles
 
     event_occurred = is_overspeeding or is_heavy or is_opposite or is_stalled
-
     if not event_occurred:
         return
 
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     transaction_id = f"{track_id}_{datetime.now().strftime('%Y%m%d_%H%M%S%f')}"
-
+    
     new_data = {
         "Transaction_ID": transaction_id,
         "Timestamp": timestamp,
@@ -109,14 +108,37 @@ def final_report(speed, track_id, class_name):
 
     if track_id not in logged_track_ids:
         logged_track_ids[track_id] = new_data
+        write_to_csv(new_data)
     else:
+        # Optional: update with new flags if required
         prev_data = logged_track_ids[track_id]
-        prev_data["Is_Stalled"] = prev_data["Is_Stalled"] or is_stalled
-        prev_data["Is_Opposite"] = prev_data["Is_Opposite"] or is_opposite
-        prev_data["Is_Heavy"] = prev_data["Is_Heavy"] or is_heavy
-        prev_data["Is_Overspeeding"] = prev_data["Is_Overspeeding"] or is_overspeeding
-        prev_data["Speed_kmph"] = max(prev_data["Speed_kmph"], round(speed, 2))  # Optional: keep highest speed
-        prev_data["Timestamp"] = timestamp  # Update timestamp to most recent event
+        updated = False
+        if is_stalled and not prev_data["Is_Stalled"]:
+            prev_data["Is_Stalled"] = True
+            updated = True
+        if is_opposite and not prev_data["Is_Opposite"]:
+            prev_data["Is_Opposite"] = True
+            updated = True
+        if is_heavy and not prev_data["Is_Heavy"]:
+            prev_data["Is_Heavy"] = True
+            updated = True
+        if is_overspeeding and not prev_data["Is_Overspeeding"]:
+            prev_data["Is_Overspeeding"] = True
+            updated = True
+        if updated:
+            prev_data["Speed_kmph"] = max(prev_data["Speed_kmph"], round(speed, 2))
+            prev_data["Timestamp"] = timestamp
+            write_to_csv(prev_data)
+
+def write_to_csv(data):
+    file_exist = os.path.exists(full_path)
+    with open(full_path, mode='a', newline='') as csvfile:
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        if not file_exist or os.path.getsize(full_path) == 0:
+            writer.writeheader()
+        writer.writerow(data)
+
+
 
 # Event - Heavy Vehicle Detection
 def heavy_vehicle(car_id):
@@ -355,24 +377,18 @@ def draw_Tracks(tracks, frame, roi_polygon, counted_vehicles, fps):
             color = (0, 255, 255)
         elif track_id in opposite_cars:
             color = (0, 0, 255)
-        elif track_id in Heavy_vehicles:
-            color = (255, 0, 0)
-        elif speed > 60:
+        elif speed > speed_limit:
             color = (0, 165, 255)
         else:
             color = (0, 255, 0)
 
         cv2.rectangle(frame, (x1, y1), (x2, y2), color, 1)
         cv2.putText(frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.4, color, 1)
-        final_report(speed, track_id, class_name)
-    with open(full_path, mode='w', newline='') as csvfile:
-        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-        writer.writeheader()
-        for data in logged_track_ids.values():
-            writer.writerow(data)  
-            
+        final_report(speed, track_id, class_name) 
+                
             
 # MAIN_LOOP
+
 print("\n---Feed Started---\n")
 while True:
    ret, frame = cap.read()
@@ -382,7 +398,7 @@ while True:
        continue
       
    frame = cv2.resize(frame, (dst_width, dst_height))
-   results = model(frame, device = device, conf = 0.6, verbose=False)[0]
+   results = model(frame, device=device, conf=0.6, verbose=False)[0]
 
    detections = []
    obj_Detection(results, detections)

@@ -62,11 +62,11 @@ car_coordinates = {}
 roi_coords = []
 latest_boxes_coords={}
 
-stall_cars = []
+stall_cars = [] 
 opposite_cars = []
 overspeed = {}
 Heavy_vehicles = []
-collision_record = {}
+collision_record = {} 
 vehicle_count ={}
 counted_vehicle = set()
 vehicle_data_record = []
@@ -212,7 +212,7 @@ H, bev_size = get_bev_homography(src_pts)
 
 
 
-# Event - Stall/Stop Vehicle detection
+# Event - Stall/Stop Vehicle detection - fps * 5 : If a car doesn't move for 5 seconds then it will be flaged Stalled.
 def stall_vehicle_detection(x1,x2,y1,y2,car_id):
   def stall_movement_fn(car_coordinates, car_id):
       def eucledian(base_coord, pt):
@@ -223,8 +223,8 @@ def stall_vehicle_detection(x1,x2,y1,y2,car_id):
 
       coords = car_coordinates[car_id]
       stalled = True
-      if(len(coords) > 10):
-          recent_coords = coords[-10:]
+      if(len(coords) > fps * 5):
+          recent_coords = coords[-(fps * 5):]
           base_coord = recent_coords[0]
           for pt in recent_coords[1:]:
               distance = eucledian(base_coord, pt)
@@ -239,7 +239,7 @@ def stall_vehicle_detection(x1,x2,y1,y2,car_id):
   if(x2-x1 == 0 and y2-y1 == 0):
     if(stall_movement_fn(car_coordinates, car_id)):
       if(car_id not in stall_cars):
-         if len(stall_cars)>30:
+         if len(stall_cars)>50:
             stall_cars.pop(0)
          stall_cars.append(car_id)
 
